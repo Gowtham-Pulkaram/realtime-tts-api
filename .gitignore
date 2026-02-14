@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Audio files (generated outputs)
+*.wav
+*.mp3
+*.m4a
+generated_audio/
+output*.wav
+stream_output.wav
+websocket_output.wav
+
+# Test files
+test.py
+main.py
+main.py~
+
+# Logs
+*.log
+
+# Model cache (downloaded models)
+/home/*/.local/share/tts/
+~/.local/share/tts/
+
+# Environment variables
+.env
+.env.local
+
+# Temporary files
+*.tmp
+tmp/
+temp/
