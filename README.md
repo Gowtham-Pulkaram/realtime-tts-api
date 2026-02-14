@@ -320,7 +320,7 @@ ERROR: Model is not multi-lingual but `language` is provided
 
 ## 📄 License
 
-[Your License Here]
+[ISO-2026]
 
 ## 🤝 Contributing
 
@@ -328,7 +328,7 @@ Contributions welcome! Please open an issue or PR.
 
 ## 📧 Contact
 
-[Your Contact Info]
+[Gowtham Pulkaram( Mail: pulkaramgowtham@gmail.com)]
 
 ---
 
