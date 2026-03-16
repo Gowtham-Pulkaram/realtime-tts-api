@@ -11,8 +11,9 @@ class TTSConfig(BaseSettings):
     """TTS API Configuration"""
     
     # Model Settings
-    #model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2"
-    model_name: str = "tts_models/en/ljspeech/tacotron2-DDC"
+    tts_model_name: str = "tts_models/en/ljspeech/tacotron2-DDC"          # Fast TTS
+    clone_model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2"  # Voice cloning
+    enable_clone_model: bool = True  # Set to False to skip loading XTTSv2
     use_cuda: bool = True  # Use GPU if available
     
     # Audio Settings

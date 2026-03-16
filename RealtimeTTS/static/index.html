@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Clone Studio — Coqui TTS</title>
+    <meta name="description" content="Clone any voice with AI-powered text-to-speech using Coqui TTS XTTSv2">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <div class="logo">
+                <span class="logo-icon">🎙️</span>
+                <h1>Voice Clone <span class="accent">Studio</span></h1>
+            </div>
+            <span class="badge">XTTSv2</span>
+        </div>
+        <div class="header-right">
+            <div class="status-indicator" id="statusIndicator">
+                <span class="status-dot"></span>
+                <span class="status-text">Connecting...</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Two-column layout -->
+        <div class="grid">
+            <!-- Left Column: Controls -->
+            <div class="controls-column">
+
+                <!-- Voice Upload Card -->
+                <section class="card" id="uploadCard">
+                    <div class="card-header">
+                        <h2>
+                            <span class="card-icon">🎤</span>
+                            Voice Sample
+                        </h2>
+                        <span class="card-hint">6+ seconds recommended</span>
+                    </div>
+                    <div class="drop-zone" id="dropZone">
+                        <div class="drop-zone-content" id="dropContent">
+                            <div class="drop-icon">
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                            </div>
+                            <p class="drop-text">Drag & drop your voice sample here</p>
+                            <p class="drop-subtext">or click to browse</p>
+                            <p class="drop-formats">WAV, MP3, FLAC, OGG — Max 20MB</p>
+                        </div>
+                        <div class="drop-zone-uploaded hidden" id="uploadedInfo">
+                            <div class="uploaded-icon">✅</div>
+                            <p class="uploaded-name" id="uploadedName"></p>
+                            <p class="uploaded-size" id="uploadedSize"></p>
+                            <audio id="voicePreview" controls class="voice-preview"></audio>
+                            <button class="btn btn-sm btn-ghost" id="changeVoiceBtn">Change voice</button>
+                        </div>
+                        <input type="file" id="fileInput" accept=".wav,.mp3,.flac,.ogg,.m4a" hidden>
+                    </div>
+                    <!-- Existing voices -->
+                    <div class="existing-voices" id="existingVoices">
+                        <p class="section-label">Or use an existing voice:</p>
+                        <div class="voices-list" id="voicesList"></div>
+                    </div>
+                </section>
+
+                <!-- Text Input Card -->
+                <section class="card">
+                    <div class="card-header">
+                        <h2>
+                            <span class="card-icon">✍️</span>
+                            Text to Speak
+                        </h2>
+                        <span class="char-count" id="charCount">0 / 5000</span>
+                    </div>
+                    <textarea 
+                        id="textInput" 
+                        class="text-input" 
+                        placeholder="Enter the text you want to hear in the cloned voice..."
+                        maxlength="5000"
+                        rows="5"
+                    ></textarea>
+                    <div class="text-controls">
+                        <div class="select-wrapper">
+                            <label for="languageSelect">Language</label>
+                            <select id="languageSelect" class="select">
+                                <option value="en" selected>English</option>
+                                <option value="es">Spanish</option>
+                                <option value="fr">French</option>
+                                <option value="de">German</option>
+                                <option value="it">Italian</option>
+                                <option value="pt">Portuguese</option>
+                                <option value="pl">Polish</option>
+                                <option value="tr">Turkish</option>
+                                <option value="ru">Russian</option>
+                                <option value="nl">Dutch</option>
+                                <option value="cs">Czech</option>
+                                <option value="ar">Arabic</option>
+                                <option value="zh-cn">Chinese</option>
+                                <option value="ja">Japanese</option>
+                                <option value="hu">Hungarian</option>
+                                <option value="ko">Korean</option>
+                                <option value="hi">Hindi</option>
+                            </select>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Generate Button -->
+                <button class="btn btn-primary btn-generate" id="generateBtn" disabled>
+                    <span class="btn-content" id="btnContent">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                        </svg>
+                        Generate Speech
+                    </span>
+                    <span class="btn-loading hidden" id="btnLoading">
+                        <div class="spinner"></div>
+                        Generating...
+                    </span>
+                </button>
+            </div>
+
+            <!-- Right Column: Output -->
+            <div class="output-column">
+
+                <!-- Audio Output Card -->
+                <section class="card output-card" id="outputCard">
+                    <div class="card-header">
+                        <h2>
+                            <span class="card-icon">🔊</span>
+                            Generated Audio
+                        </h2>
+                    </div>
+                    <div class="output-placeholder" id="outputPlaceholder">
+                        <div class="placeholder-icon">
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+                                <path d="M9 18V5l12-2v13"/>
+                                <circle cx="6" cy="18" r="3"/>
+                                <circle cx="18" cy="16" r="3"/>
+                            </svg>
+                        </div>
+                        <p>Upload a voice & enter text to generate</p>
+                    </div>
+                    <div class="output-result hidden" id="outputResult">
+                        <audio id="outputAudio" controls class="output-audio"></audio>
+                        <div class="output-stats" id="outputStats"></div>
+                        <div class="output-actions">
+                            <a class="btn btn-sm btn-accent" id="downloadBtn" download>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                                    <polyline points="7 10 12 15 17 10"/>
+                                    <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                                Download
+                            </a>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- History Card -->
+                <section class="card history-card">
+                    <div class="card-header">
+                        <h2>
+                            <span class="card-icon">📜</span>
+                            History
+                        </h2>
+                        <button class="btn btn-sm btn-ghost" id="clearHistoryBtn">Clear</button>
+                    </div>
+                    <div class="history-list" id="historyList">
+                        <div class="history-empty" id="historyEmpty">
+                            <p>No generations yet</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>Powered by <strong>Coqui TTS XTTSv2</strong> • Voice Clone Studio</p>
+    </footer>
+
+    <script src="/app.js"></script>
+</body>
+</html>

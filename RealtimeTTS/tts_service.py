@@ -13,44 +13,60 @@ from pathlib import Path
 from config import config
 import time
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s.%(msecs)03d | %(levelname)-5s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
 logger = logging.getLogger(__name__)
 
 
 class TTSService:
     """
-    TTS Service managing Coqui TTS XTTSv2 model
-    Provides synthesis and streaming capabilities
+    TTS Service managing dual Coqui TTS models:
+    - Tacotron2-DDC for fast streaming TTS
+    - XTTSv2 for voice cloning
     """
     
     def __init__(self):
-        self.model = None
+        self.tts_model = None          # Fast TTS (Tacotron2-DDC)
+        self.clone_model = None        # Voice cloning (XTTSv2)
         self.device = None
-        self.model_loaded = False
-        self.default_speaker_embedding = None  # Cache for default speaker
-        self.speaker_cache = {}  # Cache for multiple speakers
+        self.tts_model_loaded = False
+        self.clone_model_loaded = False
+        self.default_speaker_embedding = None
+        self.speaker_cache = {}
         
     def initialize(self):
-        """Initialize the TTS model"""
+        """Initialize both TTS models"""
         try:
-            logger.info(f"Initializing TTS model: {config.model_name}")
-            
             # Determine device
             self.device = "cuda" if config.use_cuda and torch.cuda.is_available() else "cpu"
             logger.info(f"Using device: {self.device}")
             
-            # Initialize TTS model
-            self.model = TTS(config.model_name).to(self.device)
+            # Load fast TTS model (Tacotron2-DDC)
+            logger.info(f"Loading TTS model: {config.tts_model_name}")
+            self.tts_model = TTS(config.tts_model_name).to(self.device)
+            self.tts_model_loaded = True
+            logger.info("TTS model loaded successfully")
             
-            # Pre-load default speaker audio into memory
+            # Load voice cloning model (XTTSv2) if enabled
+            if config.enable_clone_model:
+                logger.info(f"Loading clone model: {config.clone_model_name}")
+                self.clone_model = TTS(config.clone_model_name).to(self.device)
+                self.clone_model_loaded = True
+                logger.info("Clone model loaded successfully")
+            else:
+                logger.info("Clone model disabled (enable_clone_model=False)")
+            
+            # Pre-load default speaker audio
             if config.default_speaker_wav:
                 self._cache_default_speaker()
             
-            self.model_loaded = True
-            logger.info("TTS model initialized successfully")
+            logger.info("All models initialized successfully")
             
         except Exception as e:
-            logger.error(f"Failed to initialize TTS model: {e}")
+            logger.error(f"Failed to initialize TTS models: {e}")
             raise
     
     def _cache_default_speaker(self):
@@ -74,7 +90,8 @@ class TTSService:
         text: str, 
         language: str = "en",
         speaker_wav: Optional[str] = None,
-        speed: float = 1.0
+        speed: float = 1.0,
+        use_clone_model: bool = False
     ) -> Tuple[np.ndarray, int, dict]:
         """
         Synthesize speech from text
@@ -84,18 +101,28 @@ class TTSService:
             language: Language code
             speaker_wav: Path to speaker audio for voice cloning
             speed: Speech speed multiplier
+            use_clone_model: If True, use XTTSv2 for voice cloning; else use Tacotron2-DDC
             
         Returns:
             Tuple of (audio_array, sample_rate, metrics)
         """
-        if not self.model_loaded:
-            raise RuntimeError("TTS model not initialized. Call initialize() first.")
+        # Select the appropriate model
+        if use_clone_model:
+            if not self.clone_model_loaded:
+                raise RuntimeError("Clone model (XTTSv2) not initialized.")
+            model = self.clone_model
+            model_label = "CLONE/XTTSv2"
+        else:
+            if not self.tts_model_loaded:
+                raise RuntimeError("TTS model (Tacotron2-DDC) not initialized.")
+            model = self.tts_model
+            model_label = "TTS/Tacotron2"
         
         start_time = time.time()
         metrics = {}
         
         try:
-            logger.info(f"Synthesizing text (length: {len(text)}, language: {language})")
+            logger.info(f"[{model_label}] Synthesizing text (length: {len(text)}, language: {language})")
             
             # Use provided speaker_wav, or fall back to cached default
             if not speaker_wav:
@@ -106,31 +133,36 @@ class TTSService:
                     speaker_wav = config.default_speaker_wav
                     logger.info(f"Using default speaker: {speaker_wav}")
             
-            # Check model capabilities based on model name
-            model_name = config.model_name.lower()
-            is_multi_lingual = "xtts" in model_name or "multilingual" in model_name
-            
-            # Build TTS parameters based on model capabilities
+            # Build TTS parameters based on model type
             tts_params = {"text": text, "speed": speed}
             
-            # Add language only for multi-lingual models
-            if is_multi_lingual:
+            if use_clone_model:
+                # XTTSv2 requires language and speaker_wav
                 tts_params["language"] = language
-                logger.info(f"Multi-lingual model detected, adding language: {language}")
-            
-            # Add speaker_wav if available (for voice cloning models)
-            if speaker_wav and Path(speaker_wav).exists():
-                tts_params["speaker_wav"] = speaker_wav
-                logger.info(f"Using speaker audio: {speaker_wav}")
+                if speaker_wav and Path(speaker_wav).exists():
+                    tts_params["speaker_wav"] = speaker_wav
+                    logger.info(f"Using speaker audio: {speaker_wav}")
             
             synthesis_start = time.time()
-            logger.info(f"TTS call parameters: {list(tts_params.keys())}")
-            wav = self.model.tts(**tts_params)
+            logger.info(f"[{model_label}] TTS params: {list(tts_params.keys())}")
+            wav = model.tts(**tts_params)
             synthesis_time = time.time() - synthesis_start
             
             # Convert to numpy array if needed
             if isinstance(wav, list):
                 wav = np.array(wav)
+            
+            # Safeguard: truncate runaway audio (Tacotron2 attention failure)
+            # Normal speech: ~10-15 chars/second. Allow max 0.5s per character.
+            max_duration_s = max(len(text) * 0.5, 2.0)  # at least 2 seconds
+            max_samples = int(max_duration_s * config.sample_rate)
+            if len(wav) > max_samples:
+                actual_duration = len(wav) / config.sample_rate
+                logger.warning(
+                    f"[{model_label}] Audio truncated: {actual_duration:.1f}s -> {max_duration_s:.1f}s "
+                    f"(text: {len(text)} chars, likely attention failure)"
+                )
+                wav = wav[:max_samples]
             
             total_time = time.time() - start_time
             audio_duration = len(wav) / config.sample_rate
@@ -145,13 +177,13 @@ class TTSService:
             }
             
             logger.info(
-                f"Synthesis complete. Audio: {len(wav)} samples ({audio_duration:.2f}s), "
+                f"[{model_label}] Complete: {len(wav)} samples ({audio_duration:.2f}s), "
                 f"Time: {synthesis_time:.2f}s, RTF: {real_time_factor:.2f}x"
             )
             return wav, config.sample_rate, metrics
             
         except Exception as e:
-            logger.error(f"Synthesis failed: {e}")
+            logger.error(f"[{model_label}] Synthesis failed: {e}")
             raise
     
     def synthesize_streaming(
@@ -159,7 +191,8 @@ class TTSService:
         text: str,
         language: str = "en",
         speaker_wav: Optional[str] = None,
-        chunk_size: int = 4096
+        chunk_size: int = 4096,
+        use_clone_model: bool = False
     ) -> Generator[bytes, None, None]:
         """
         Synthesize speech with streaming output
@@ -169,15 +202,14 @@ class TTSService:
             language: Language code
             speaker_wav: Path to speaker audio
             chunk_size: Size of audio chunks to yield
+            use_clone_model: If True, use XTTSv2; else Tacotron2-DDC
             
         Yields:
             Audio chunks as bytes (first chunk includes WAV header, rest is raw PCM)
         """
-        if not self.model_loaded:
-            raise RuntimeError("TTS model not initialized")
-        
         try:
-            logger.info(f"Starting streaming synthesis for text length: {len(text)}")
+            model_label = "CLONE" if use_clone_model else "TTS"
+            logger.info(f"[{model_label}] Starting streaming synthesis for text length: {len(text)}")
             
             # Split text into sentences for progressive synthesis
             sentences = self._split_text(text)
@@ -189,13 +221,14 @@ class TTSService:
                 if not sentence.strip():
                     continue
                 
-                logger.info(f"Synthesizing chunk {i+1}/{len(sentences)}")
+                logger.info(f"[{model_label}] Synthesizing chunk {i+1}/{len(sentences)}")
                 
-                # Synthesize sentence
+                # Synthesize sentence using the appropriate model
                 wav, sample_rate, _ = self.synthesize(
                     text=sentence,
                     language=language,
-                    speaker_wav=speaker_wav
+                    speaker_wav=speaker_wav,
+                    use_clone_model=use_clone_model
                 )
                 
                 # For first chunk: send with WAV header
@@ -283,8 +316,12 @@ class TTSService:
         logger.info(f"Audio saved to: {output_path}")
     
     def is_ready(self) -> bool:
-        """Check if service is ready"""
-        return self.model_loaded
+        """Check if at least one model is ready"""
+        return self.tts_model_loaded or self.clone_model_loaded
+    
+    def is_clone_ready(self) -> bool:
+        """Check if clone model is ready"""
+        return self.clone_model_loaded
     
     def get_device(self) -> str:
         """Get current device"""
